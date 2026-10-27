@@ -1,4 +1,5 @@
 import { GOAL_KEY_ACTIONS, GOAL_COMMAND_INPUTS, bindingKeys, keyActionBinding, type GoalCommandId } from "./goal-controls.ts";
+import { mainEditorOwnsKeyboard } from "./goal-keyboard-focus.ts";
 import { matchesKey, getKeybindings } from "@earendil-works/pi-tui";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { cloneGoal, createGoal, nowIso, type GoalTask } from "./goal-record.ts";
@@ -130,6 +131,15 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 				const action = KEY_ACTION_BY_PATH.get(path)!;
 				return bindingKeys(keyActionBinding(settings, action)).some(key => matchesKey(data, key));
 			};
+			// Pi hands terminal input to extension listeners before the focused component,
+			// so Escape pressed to close another extension's dialog or overlay (for example
+			// the subagent fleet inspector) would also pause the goal. Those keys belong to
+			// the focused surface; only the main window's keys reach the goal.
+			if (!mainEditorOwnsKeyboard(core.goalWidgetComponentRef.current?.terminalTui?.())) {
+				const heldByFocusedSurface = matchesKey(data, "escape")
+					|| ["pause", "interruptAudit", "dashboard.collapse"].some(path => matches(path));
+				if (heldByFocusedSurface) return undefined;
+			}
 			if (isKittyRepeatOrRelease(data)) {
 				const applicable = GOAL_KEY_ACTIONS.filter(action => action.context === "global" ||
 					(core.auditProgress ? action.context === "audit" : core.isDashboardExpanded() ? action.context === "expanded" : action.context === "compact"));

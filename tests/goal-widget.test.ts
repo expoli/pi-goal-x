@@ -627,6 +627,44 @@ test("escape still pauses a running goal when the dashboard is compact", () => {
 	assert.deepEqual(h.consumed, ["pause"]);
 });
 
+// ── foreign keyboard surfaces (Escape ownership) ─────────────────────────────
+
+/** The editor exposes text accessors; Pi's dialogs and extension overlays do not. */
+const editorComponent = { render: () => [] as string[], handleInput: () => {}, getText: () => "", setText: () => {} };
+
+function surfaceHarness(tui: { hasOverlay?: () => boolean; focusedComponent?: unknown }) {
+	const h = keybindingHarness(false);
+	(h.core as unknown as { state: { goal: unknown } }).state.goal = { status: "active", autoContinue: true };
+	(h.core as unknown as { goalWidgetComponentRef: { current: unknown } }).goalWidgetComponentRef = {
+		current: { invalidate: () => {}, terminalTui: () => tui },
+	};
+	return h;
+}
+
+test("escape that closes another extension's overlay does not pause the goal", () => {
+	const h = surfaceHarness({ hasOverlay: () => true, focusedComponent: editorComponent });
+	assert.equal(h.fire("\u001b"), undefined, "the overlay keeps its own Escape");
+	assert.deepEqual(h.consumed, [], "the goal must not pause");
+});
+
+test("escape in a focused foreign dialog does not pause the goal", () => {
+	const h = surfaceHarness({ hasOverlay: () => false, focusedComponent: { render: () => [] as string[], handleInput: () => {} } });
+	assert.equal(h.fire("\u001b"), undefined, "the dialog keeps its own Escape");
+	assert.deepEqual(h.consumed, [], "the goal must not pause");
+});
+
+test("escape in the main editor still pauses a running goal", () => {
+	const h = surfaceHarness({ hasOverlay: () => false, focusedComponent: editorComponent });
+	h.fire("\u001b");
+	assert.deepEqual(h.consumed, ["pause"], "the main window keeps the goal's pause key");
+});
+
+test("a TUI without the surface accessors keeps the pause key working", () => {
+	const h = surfaceHarness({} as never);
+	h.fire("\u001b");
+	assert.deepEqual(h.consumed, ["pause"], "an uninspectable host must not lose the pause key");
+});
+
 test("ctrl+shift+a toggles the focused goal's auditor and refreshes the widget", () => {
 	const h = keybindingHarness();
 	(h.core as unknown as { state: { goal: unknown } }).state.goal = { status: "active", autoContinue: true };

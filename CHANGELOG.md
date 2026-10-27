@@ -4,6 +4,10 @@ All notable changes to pi-goal-x are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Leave Escape to the focused dialog or overlay. Pi sends terminal input to extension listeners before the focused component, so closing another extension's window (for example the pi-subagents fleet inspector) also paused the goal and aborted the turn. The goal's pause, audit-interrupt and collapse keys now apply only while the main editor owns the keyboard.
+
 ## [0.34.0] — 2026-10-24
 
 Includes #107.

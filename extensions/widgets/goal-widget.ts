@@ -401,6 +401,15 @@ export class GoalWidgetComponent implements Component {
 		this.tui.requestRender();
 	}
 
+	/**
+	 * Live terminal handle for host-surface checks: the terminal-key handler needs
+	 * it to tell whether the main editor owns the keyboard or another extension's
+	 * dialog/overlay is focused (see goal-keyboard-focus.ts).
+	 */
+	terminalTui(): TUI {
+		return this.tui;
+	}
+
 	/** Render debug info panel when debug mode is active */
 	private renderDebugPanel(width: number): string[] {
 		const t = this.theme;
