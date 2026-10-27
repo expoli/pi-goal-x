@@ -29,6 +29,7 @@ import {
 	runBlockerOracle,
 } from "./goal-oracle.ts";
 import { loadSettingsSnapshot, type ResolvedGoalOracleSettings } from "./goal-settings.ts";
+import { planUpdateGoal } from "./goal-update-params.ts";
 
 /** Current + first-pending (excluding current) task pointers for concise get_goal. */
 function conciseTaskPointers(goal: GoalRecord): { findCurrentTask?: GoalTask; firstPendingTask?: GoalTask } {
@@ -530,20 +531,12 @@ pi.registerTool(defineTool({
 		// P1-3: persist any buffered in-turn mutations now so the auditor and
 		// status transitions observe the current task/state, not the stale disk.
 		core.flushGoalTransaction(ctx);
-		if (!!params.continuation === !!params.status || (params.continuation && (params.reason !== undefined || params.attempted_actions !== undefined || params.suggested_action !== undefined || params.completion_summary !== undefined))) {
-			return { content: [{ type: "text", text: "Provide exactly one lifecycle status or continuation, without mixing their fields." }], details: {}, terminate: false };
-		}
-		if (params.continuation) return core.scheduler.declare(ctx, params.continuation as GoalContinuation);
-		if (params.status === "blocked") {
-			const attempted = Array.isArray((params as { attempted_actions?: unknown }).attempted_actions)
-				? ((params as { attempted_actions: unknown[] }).attempted_actions.filter((a): a is string => typeof a === "string"))
-				: [];
-			return runGoalBlockedFlow(ctx, params.reason, attempted);
-		}
-		if (params.status === "paused") {
-			return runGoalAgentPauseFlow(ctx, params.reason, params.suggested_action);
-		}
-		return deps.runGoalCompletionFlow(core, ctx, params.completion_summary);
+		const plan = planUpdateGoal(params);
+		if (plan.kind === "reject") return { content: [{ type: "text", text: plan.message }], details: {}, terminate: false };
+		if (plan.kind === "continuation") return core.scheduler.declare(ctx, plan.continuation as GoalContinuation);
+		if (plan.kind === "blocked") return runGoalBlockedFlow(ctx, plan.reason, plan.attemptedActions);
+		if (plan.kind === "paused") return runGoalAgentPauseFlow(ctx, plan.reason, plan.suggestedAction);
+		return deps.runGoalCompletionFlow(core, ctx, plan.completionSummary);
 	},
 	renderCall(args, theme) {
 		return new Text(theme.fg("toolTitle", "update_goal ") + theme.fg("muted", args?.status ?? ""), 0, 0);

@@ -383,6 +383,78 @@ test("update_goal(complete) with a rejection keeps the goal open with feedback",
 	}
 });
 
+// ── update_goal: filler arguments ────────────────────────────────────────────
+
+/**
+ * Recorded verbatim from a session where all six calls were rejected: the model
+ * filled every declared parameter, including an empty-string reason and a
+ * payload-free `{"kind":"ready"}` continuation. Filler states nothing, so it must
+ * not turn a plain completion into a "mixing fields" conflict.
+ */
+const FILLER_COMPLETION = {
+	status: "complete" as const,
+	continuation: { kind: "ready" as const },
+	reason: "",
+	suggested_action: "",
+	attempted_actions: [] as string[],
+	completion_summary: "subagent returned its result",
+};
+
+test("update_goal ignores filler fields and completes", async () => {
+	const f = makeFixture();
+	const approved = { approved: true, disapproved: false, output: "All good\n<approved/>", model: "mock" };
+	try {
+		const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries, runCompletionAuditor: async () => approved });
+		await start(h);
+		const update = h.tools.get("update_goal")!;
+		const result = await (update.execute as any)("update-filler", FILLER_COMPLETION, undefined, undefined, h.ctx);
+		const text = result.content?.[0]?.text ?? "";
+		assert.equal(text.includes("without mixing their fields"), false, `filler must not be reported as a conflict: ${text}`);
+		await h.handlers.get("turn_end")?.({ message: { role: "assistant", stopReason: "stop", usage: { input: 0, output: 0 } } }, h.ctx);
+		assert.equal(activeGoalFiles(f.cwd).length, 0, "the approved completion archives the goal");
+	} finally {
+		f.cleanup();
+	}
+});
+
+test("filler fields do not reject a wait continuation", async () => {
+	const f = makeFixture();
+	try {
+		const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries });
+		await start(h);
+		const update = h.tools.get("update_goal")!;
+		const result = await (update.execute as any)("update-wait-filler", {
+			continuation: { kind: "wait", reason: "waiting on CI", deadline: new Date(Date.now() + 3_600_000).toISOString() },
+			reason: "",
+			suggested_action: "",
+			attempted_actions: [],
+			completion_summary: "",
+		}, undefined, undefined, h.ctx);
+		const text = result.content?.[0]?.text ?? "";
+		assert.equal(text.includes("without mixing their fields"), false, `filler must not reject a wait: ${text}`);
+	} finally {
+		f.cleanup();
+	}
+});
+
+test("a real status/continuation conflict is still rejected", async () => {
+	const f = makeFixture();
+	try {
+		const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries });
+		await start(h);
+		const update = h.tools.get("update_goal")!;
+		const result = await (update.execute as any)("update-conflict", {
+			status: "complete",
+			continuation: { kind: "wait", reason: "waiting on CI", deadline: new Date(Date.now() + 3_600_000).toISOString() },
+		}, undefined, undefined, h.ctx);
+		const text = result.content?.[0]?.text ?? "";
+		assert.ok(text.includes("without mixing their fields"), "a status plus a real wait stays a conflict");
+		assert.equal(activeGoalFiles(f.cwd).length, 1, "the goal is untouched");
+	} finally {
+		f.cleanup();
+	}
+});
+
 // ── update_goal(blocked) ─────────────────────────────────────────────────────
 
 test("update_goal(blocked) records a distinct agent-blocked state from active", async () => {

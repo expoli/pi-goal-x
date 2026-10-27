@@ -4,6 +4,10 @@ All notable changes to pi-goal-x are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Ignore filler `update_goal` arguments instead of rejecting them as a mixed call. Empty strings and arrays, and a payload-free `{"kind":"ready"}` continuation next to a lifecycle status, count as absent, so a model that fills every declared parameter — Responses providers that normalize optional arguments into required ones — can still complete, block, pause, wait and declare ready. A status plus a real wait, or a continuation plus a real completion summary, is still rejected, now with an actionable message.
+
 ## [0.34.0] — 2026-10-24
 
 Includes #107.

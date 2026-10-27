@@ -216,7 +216,9 @@ test("update_goal rejects mixed forms and scheduler cloning protects rollback", 
 	const h = await fixture(t, 5);
 	h.begin();
 	const tool = h.tools.get("update_goal");
-	const mixed = await tool.execute("mixed", { status: "complete", continuation: { kind: "ready" } }, undefined, undefined, h.ctx);
+	// A payload-free {"kind":"ready"} next to a status is filler (see
+	// goal-update-params.ts); a wait carries its own reason and stays a conflict.
+	const mixed = await tool.execute("mixed", { status: "complete", continuation: { kind: "wait", reason: "still waiting", deadline: new Date(Date.now() + 60_000).toISOString() } }, undefined, undefined, h.ctx);
 	assert.equal(mixed.terminate, false);
 	h.ready();
 	const before = structuredClone(h.core.state.goal!.scheduler);
